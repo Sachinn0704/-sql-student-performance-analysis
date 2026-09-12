@@ -1,0 +1,108 @@
+-- Advanced SQL Student Performance Analytics
+-- Assumes: students(id, ...), courses(id, name), enrollments(student_id, course_id, grade)
+-- Compatible with modern MySQL 8+, PostgreSQL, and SQLite 3.25+.
+
+-- 1. Student-level performance summary
+WITH student_summary AS (
+    SELECT
+        s.id AS student_id,
+        AVG(e.grade) AS avg_grade,
+        COUNT(*) AS courses_taken,
+        SUM(CASE WHEN e.grade < 40 THEN 1 ELSE 0 END) AS failed_courses
+    FROM students s
+    JOIN enrollments e ON e.student_id = s.id
+    GROUP BY s.id
+)
+SELECT
+    student_id,
+    ROUND(avg_grade, 2) AS avg_grade,
+    courses_taken,
+    failed_courses,
+    CASE
+        WHEN avg_grade >= 75 THEN 'Excellent'
+        WHEN avg_grade >= 60 THEN 'Good'
+        WHEN avg_grade >= 40 THEN 'Pass'
+        ELSE 'At Risk'
+    END AS performance_band
+FROM student_summary
+ORDER BY avg_grade DESC;
+
+-- 2. Rank students while preserving ties
+WITH student_summary AS (
+    SELECT
+        s.id AS student_id,
+        AVG(e.grade) AS avg_grade
+    FROM students s
+    JOIN enrollments e ON e.student_id = s.id
+    GROUP BY s.id
+)
+SELECT
+    student_id,
+    ROUND(avg_grade, 2) AS avg_grade,
+    DENSE_RANK() OVER (ORDER BY avg_grade DESC) AS performance_rank
+FROM student_summary
+ORDER BY performance_rank, student_id;
+
+-- 3. Compare every course with the overall course-average baseline
+WITH course_summary AS (
+    SELECT
+        c.id AS course_id,
+        c.name AS course_name,
+        AVG(e.grade) AS avg_grade
+    FROM courses c
+    JOIN enrollments e ON e.course_id = c.id
+    GROUP BY c.id, c.name
+)
+SELECT
+    course_id,
+    course_name,
+    ROUND(avg_grade, 2) AS avg_grade,
+    ROUND(AVG(avg_grade) OVER (), 2) AS overall_course_avg,
+    ROUND(avg_grade - AVG(avg_grade) OVER (), 2) AS variance_from_baseline
+FROM course_summary
+ORDER BY variance_from_baseline DESC;
+
+-- 4. Quartile segmentation for students
+WITH student_summary AS (
+    SELECT
+        s.id AS student_id,
+        AVG(e.grade) AS avg_grade
+    FROM students s
+    JOIN enrollments e ON e.student_id = s.id
+    GROUP BY s.id
+)
+SELECT
+    student_id,
+    ROUND(avg_grade, 2) AS avg_grade,
+    NTILE(4) OVER (ORDER BY avg_grade DESC) AS performance_quartile
+FROM student_summary
+ORDER BY performance_quartile, avg_grade DESC;
+
+-- 5. Identify each student's strongest subject
+WITH subject_scores AS (
+    SELECT
+        e.student_id,
+        c.name AS course_name,
+        e.grade,
+        ROW_NUMBER() OVER (
+            PARTITION BY e.student_id
+            ORDER BY e.grade DESC, c.name
+        ) AS subject_position
+    FROM enrollments e
+    JOIN courses c ON c.id = e.course_id
+)
+SELECT
+    student_id,
+    course_name AS strongest_subject,
+    grade AS strongest_grade
+FROM subject_scores
+WHERE subject_position = 1
+ORDER BY student_id;
+
+-- 6. Data-quality checks for the enrollment fact table
+SELECT
+    SUM(CASE WHEN student_id IS NULL THEN 1 ELSE 0 END) AS missing_student_ids,
+    SUM(CASE WHEN course_id IS NULL THEN 1 ELSE 0 END) AS missing_course_ids,
+    SUM(CASE WHEN grade IS NULL THEN 1 ELSE 0 END) AS missing_grades,
+    SUM(CASE WHEN grade < 0 OR grade > 100 THEN 1 ELSE 0 END) AS invalid_grades
+FROM enrollments;
