@@ -106,3 +106,27 @@ SELECT
     SUM(CASE WHEN grade IS NULL THEN 1 ELSE 0 END) AS missing_grades,
     SUM(CASE WHEN grade < 0 OR grade > 100 THEN 1 ELSE 0 END) AS invalid_grades
 FROM enrollments;
+
+-- 7. Referential-integrity checks for orphaned enrollment records
+SELECT
+    COUNT(*) AS orphaned_student_enrollments
+FROM enrollments e
+LEFT JOIN students s ON s.id = e.student_id
+WHERE s.id IS NULL;
+
+SELECT
+    COUNT(*) AS orphaned_course_enrollments
+FROM enrollments e
+LEFT JOIN courses c ON c.id = e.course_id
+WHERE c.id IS NULL;
+
+-- 8. Duplicate enrollment checks
+-- A student should normally have at most one enrollment row per course.
+SELECT
+    student_id,
+    course_id,
+    COUNT(*) AS duplicate_rows
+FROM enrollments
+GROUP BY student_id, course_id
+HAVING COUNT(*) > 1
+ORDER BY duplicate_rows DESC, student_id, course_id;
