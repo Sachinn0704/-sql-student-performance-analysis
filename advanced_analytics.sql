@@ -127,6 +127,45 @@ SELECT
     course_id,
     COUNT(*) AS duplicate_rows
 FROM enrollments
-GROUP BY student_id, course_id
+group by student_id, course_id
 HAVING COUNT(*) > 1
 ORDER BY duplicate_rows DESC, student_id, course_id;
+
+-- 9. Course-level pass-rate analysis for reporting.
+-- A grade of 40 is treated as the minimum passing score.
+SELECT
+    c.id AS course_id,
+    c.name AS course_name,
+    COUNT(*) AS enrolled_students,
+    SUM(CASE WHEN e.grade >= 40 THEN 1 ELSE 0 END) AS passed_students,
+    SUM(CASE WHEN e.grade < 40 THEN 1 ELSE 0 END) AS failed_students,
+    ROUND(
+        100.0 * SUM(CASE WHEN e.grade >= 40 THEN 1 ELSE 0 END) / COUNT(*),
+        2
+    ) AS pass_rate_pct
+FROM courses c
+JOIN enrollments e ON e.course_id = c.id
+GROUP BY c.id, c.name
+ORDER BY pass_rate_pct DESC, c.name;
+
+-- 10. Flag students who may need academic support.
+-- Students with an average below 50 or at least two failed courses are flagged.
+WITH student_summary AS (
+    SELECT
+        s.id AS student_id,
+        AVG(e.grade) AS avg_grade,
+        SUM(CASE WHEN e.grade < 40 THEN 1 ELSE 0 END) AS failed_courses
+    FROM students s
+    JOIN enrollments e ON e.student_id = s.id
+    GROUP BY s.id
+)
+SELECT
+    student_id,
+    ROUND(avg_grade, 2) AS avg_grade,
+    failed_courses,
+    CASE
+        WHEN avg_grade < 50 OR failed_courses >= 2 THEN 'Needs Support'
+        ELSE 'On Track'
+    END AS support_status
+FROM student_summary
+ORDER BY support_status DESC, avg_grade;
