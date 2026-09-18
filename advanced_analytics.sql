@@ -169,3 +169,18 @@ SELECT
     END AS support_status
 FROM student_summary
 ORDER BY support_status DESC, avg_grade;
+
+-- 11. Course-level grade distribution for dashboard reporting.
+-- Groups results into actionable score bands while retaining course totals.
+SELECT
+    c.id AS course_id,
+    c.name AS course_name,
+    SUM(CASE WHEN e.grade >= 75 THEN 1 ELSE 0 END) AS excellent_count,
+    SUM(CASE WHEN e.grade >= 60 AND e.grade < 75 THEN 1 ELSE 0 END) AS good_count,
+    SUM(CASE WHEN e.grade >= 40 AND e.grade < 60 THEN 1 ELSE 0 END) AS pass_count,
+    SUM(CASE WHEN e.grade < 40 THEN 1 ELSE 0 END) AS at_risk_count,
+    COUNT(*) AS total_enrollments
+FROM courses c
+JOIN enrollments e ON e.course_id = c.id
+GROUP BY c.id, c.name
+ORDER BY at_risk_count DESC, c.name;
