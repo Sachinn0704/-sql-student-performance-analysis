@@ -184,3 +184,46 @@ FROM courses c
 JOIN enrollments e ON e.course_id = c.id
 GROUP BY c.id, c.name
 ORDER BY at_risk_count DESC, c.name;
+
+-- 12. Workload-aware student risk analysis.
+-- Highlights students whose lower performance coincides with a heavier course load.
+WITH student_summary AS (
+    SELECT
+        s.id AS student_id,
+        AVG(e.grade) AS avg_grade,
+        COUNT(*) AS courses_taken,
+        SUM(CASE WHEN e.grade < 40 THEN 1 ELSE 0 END) AS failed_courses
+    FROM students s
+    JOIN enrollments e ON e.student_id = s.id
+    GROUP BY s.id
+), workload_benchmarks AS (
+    SELECT
+        AVG(courses_taken) AS avg_course_load
+    FROM student_summary
+)
+SELECT
+    ss.student_id,
+    ss.courses_taken,
+    ROUND(ss.avg_grade, 2) AS avg_grade,
+    ss.failed_courses,
+    ROUND(wb.avg_course_load, 2) AS avg_course_load,
+    CASE
+        WHEN ss.avg_grade < 50 AND ss.courses_taken > wb.avg_course_load
+            THEN 'High Load - High Risk'
+        WHEN ss.avg_grade < 50
+            THEN 'High Risk'
+        WHEN ss.courses_taken > wb.avg_course_load AND ss.avg_grade >= 75
+            THEN 'High Load - Strong Performance'
+        ELSE 'Standard'
+    END AS workload_profile
+FROM student_summary ss
+CROSS JOIN workload_benchmarks wb
+ORDER BY
+    CASE
+        WHEN ss.avg_grade < 50 AND ss.courses_taken > wb.avg_course_load THEN 1
+        WHEN ss.avg_grade < 50 THEN 2
+        WHEN ss.courses_taken > wb.avg_course_load AND ss.avg_grade >= 75 THEN 3
+        ELSE 4
+    END,
+    ss.avg_grade,
+    ss.student_id;
