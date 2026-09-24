@@ -227,3 +227,31 @@ ORDER BY
     END,
     ss.avg_grade,
     ss.student_id;
+
+-- 13. Course risk ranking for dashboard prioritization.
+-- Ranks courses by low pass rate, then by average grade, so the highest-risk
+-- courses appear first for targeted academic intervention.
+WITH course_metrics AS (
+    SELECT
+        c.id AS course_id,
+        c.name AS course_name,
+        COUNT(*) AS enrolled_students,
+        AVG(e.grade) AS avg_grade,
+        100.0 * SUM(CASE WHEN e.grade >= 40 THEN 1 ELSE 0 END) / COUNT(*) AS pass_rate_pct,
+        SUM(CASE WHEN e.grade < 40 THEN 1 ELSE 0 END) AS failed_students
+    FROM courses c
+    JOIN enrollments e ON e.course_id = c.id
+    GROUP BY c.id, c.name
+)
+SELECT
+    course_id,
+    course_name,
+    enrolled_students,
+    ROUND(avg_grade, 2) AS avg_grade,
+    ROUND(pass_rate_pct, 2) AS pass_rate_pct,
+    failed_students,
+    DENSE_RANK() OVER (
+        ORDER BY pass_rate_pct ASC, avg_grade ASC
+    ) AS risk_rank
+FROM course_metrics
+ORDER BY risk_rank, course_name;
